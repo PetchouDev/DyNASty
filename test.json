@@ -1,0 +1,96 @@
+{
+    "provider": {
+        "ip_range": "10.0.0.0/8",
+        "loopback_range": "192.168.0.0/16",
+        "BGP_asn": 65000,
+        "routers": {
+            "PE1": {
+                "interfaces": {
+                    "GE0/0": ["P1"],
+                    "GE0/1": ["CAE1"],
+                    "GE0/2": ["CBE1"]
+                }
+            },
+            "PE2": {
+                "interfaces": {
+                    "GE0/0": ["P2"],
+                    "GE0/1": ["CAE2"],
+                    "GE0/2": ["CBE2"]
+                }
+            },
+            "P1": {
+                "interfaces": {
+                    "GE0/0": ["PE1"],
+                    "GE0/2": ["P2"]
+                }
+            },
+            "P2": {
+                "interfaces": {
+                    "GE0/0": ["P1"],
+                    "GE0/1": ["PE2"]
+                }
+            }
+        }
+    },
+    "clients": {
+        "global": {
+            "ip_range": "172.16.0.0/12"
+        },
+        "A": {
+            "routers": {
+                "CAE1": {
+                    "eBGP_asn": 100,
+                    "eBGP_advertized_networks": [
+                        "192.168.0.0/24"
+                    ],
+                    "interfaces": {
+                        "GE0/0": "PE1"
+                    },
+                    "unmanaged_interfaces": {
+                        "GE0/1": "192.168.0.1/24"
+                    }
+                },
+                "CAE2": {
+                    "eBGP_asn": 200,
+                    "eBGP_advertized_networks": [
+                        "192.168.10.0/24"
+                    ],
+                    "interfaces": {
+                        "GE0/0": "PE2"
+                    },
+                    "unmanaged_interfaces": {
+                        "GE0/1": "192.168.10.1/24"
+                    }
+                }
+            }
+        },
+        "B": {
+            "routers": {
+                "CBE1": {
+                    "eBGP_asn": 300,
+                    "eBGP_advertized_networks": [
+                        "192.168.1.0/24"
+                    ],
+                    "interfaces": {
+                        "GE0/0": "PE1"
+                    },
+                    "unmanaged_interfaces": {
+                        "GE0/1": "192.168.1.1/24"
+                    }
+                },
+                "CBE2": {
+                    "eBGP_asn": 400,
+                    "eBGP_advertized_networks": [
+                        "192.168.11.0/24"
+                    ],
+                    "interfaces": {
+                        "GE0/0": "PE2"
+                    },
+                    "unmanaged_interfaces": {
+                        "GE0/1": "192.168.11.1/24"
+                    }
+                }
+            }
+        }
+    }
+}

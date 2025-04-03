@@ -1,0 +1,17 @@
+hostname {{ hostname }}
+
+! Configuration interfaces{% for name, interface in interfaces.items() %}
+interface {{ name }}
+ ip address {{ interface.ip_address }} {{ interface.subnet_mask }}
+ no shutdown
+ {% endfor %}
+! Configuration OSPF
+router ospf 1
+{% for subnet in ospf_subnets %} network {{ subnet.address }} {{ subnet.wildcard_mask }} area 0
+{% endfor %}
+! Configuration LDP
+mpls ip
+{% for interface in mpls_interfaces %}interface {{ interface }}
+ mpls ip
+{% endfor %}
+mpls ldp router-id Loopback0 force
