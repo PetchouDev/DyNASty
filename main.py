@@ -1,5 +1,6 @@
 import os
 import json
+import sys
 import time
 from pathlib import Path
 from ipaddress import IPv4Network
@@ -153,13 +154,14 @@ def generate_configs(intention: dict):
                             }
                             break
                 i += 1
-                                
+
     # Allocate the subnets
     client_subnets = client_allocator.get_subnets(client_subnets)
 
     # Aggregate the subnets
     for k,v in client_subnets.items():
         subnets[k] = v
+
 
     # For each subnet, assign an IP address to each host
     for subnet_id, subnet in subnets.items():
@@ -181,7 +183,6 @@ def generate_configs(intention: dict):
 
     # Generate loopback addresses for the provider devices
     provider_loopback_range = provider_intention["loopback_range"]
-    loopback_allocator = SubnetAllocator(provider_loopback_range)
     allocated_loopbacks = []
     for device, details in provider_devices.items():
         for address in IPv4Network(provider_loopback_range).hosts():
@@ -199,28 +200,35 @@ def generate_configs(intention: dict):
 
     # Iterate through the routers interfaces to get their IP addresses directly from the interface section
     for device, details in provider_devices.items():
-        for interface, details in details["interfaces"].items():
-            if "ip_address" in details:
+        for interface, interface_details in details["interfaces"].items():
+            
+            if interface == "loopback0":
                 continue
-
-            details["ip_address"]  = subnets[details["subnet_id"]]["hosts"][device]
-            details["subnet_mask"] = subnets[details["subnet_id"]]["subnet"].netmask
+            if isinstance(interface_details, dict):
+                # If the interface is a dict, it means it has a subnet id
+                subnet_id = interface_details["subnet_id"]
+                # Get the IP address from the subnets dict
+                interface_details["ip_address"] = subnets[subnet_id]["hosts"][device]
+                interface_details["subnet_mask"] = subnets[subnet_id]["subnet"].netmask
+            else:
+                print(f"Interface {interface} of device {device} is not a dict. It is a {type(interface_details)}. Please check the intention file.")
 
     for client, details in clients.items():
         if client == "global":
             continue
         for device, details in details["routers"].items():
-            for interface, details in details["interfaces"].items():
+            for interface, interface_details in details["interfaces"].items():
                 if "ip_address" in details:
                     continue
                 
-                details["ip_address"] = subnets[details["subnet_id"]]["hosts"][device]
-                details["subnet_mask"] = subnets[details["subnet_id"]]["subnet"].netmask
+                interface_details["ip_address"] = subnets[interface_details["subnet_id"]]["hosts"][device]
+                interface_details["subnet_mask"] = subnets[interface_details["subnet_id"]]["subnet"].netmask
 
     # For each provider device interface, set a client to the one that owns the peer, set to None if peer is not a client
     # Also create a dict for eBGP neighbors
     for device, device_details in provider_devices.items():
         for interface, details in device_details["interfaces"].items():
+            print(" DETAILS ", details)
             details["client"] = None
             for neighbor in details["neighbors"]:
                 if neighbor in provider_devices:
@@ -241,6 +249,8 @@ def generate_configs(intention: dict):
                                             break
                                 # Set the eBGP neighbor for the provider device
                                 if eBGP_client_interface:
+                                    print(details)
+                                    print(details["ip_address"])
                                     if "eBGP_neighbors" not in device_details:
                                         device_details["eBGP_neighbors"] = {}
                                     device_details["eBGP_neighbors"][str(eBGP_client_interface["ip_address"])] = {
@@ -248,7 +258,7 @@ def generate_configs(intention: dict):
                                         "VRF": "CLIENT_" + client + "_VRF"
                                     }
                                     client_router_details["eBGP_peer"] = {
-                                        "ip_address": str(eBGP_client_interface["ip_address"]),
+                                        "ip_address": str(details["ip_address"]),
                                         "asn": provider_intention["BGP_asn"]
                                     }
                                 break
@@ -338,8 +348,8 @@ def generate_configs(intention: dict):
                     "subnet_mask": fake_network.netmask
                 }
 
-    # with open(CONFIG_DIR / "details.json", "w") as f: # For debugging purposes
-    #     json.dump(intention, f, indent=4, default=str)
+    with open(CONFIG_DIR / "details.json", "w") as f: # For debugging purposes
+        json.dump(intention, f, indent=4, default=str)
 
     # Generate the configurations for each device
     generated_config_files = {}
@@ -381,9 +391,39 @@ def generate_configs(intention: dict):
 # Example usage
 if __name__ == "__main__":
 
-    # Get the intention file
-    file_dialog = FileDialog()
-    selected_file = file_dialog.select_json_file()
+    args = sys.argv[1:]
+
+    if "help" in args:
+        print("Usage: python main.py [options] [intention_file.json]")
+        print("Options:")
+        print("  --opendir : Open the config directory after generating the configs.")
+        print("  --push    : Push the configs to GNS3 after generating them.")
+        print("  --nopush  : Do not push the configs to GNS3 after generating them.")
+        exit()
+
+    selected_file = None
+    push = None
+    opendir = False
+
+    if args:
+        if "opendir" in args:
+            opendir = True
+            args.remove("opendir")
+        if "push" in args:
+            push = True
+            args.remove("push")
+        if "nopush" in args:
+            push = False
+            args.remove("nopush")
+    for arg in args:
+        if arg.endswith(".json"):
+            selected_file = arg
+            break
+
+    if not selected_file:
+        # Get the intention file
+        file_dialog = FileDialog()
+        selected_file = file_dialog.select_json_file()
 
     if selected_file:
         print(f"Selected file: {selected_file}")
@@ -404,15 +444,18 @@ if __name__ == "__main__":
     print(f"Configurations saved to {CONFIG_DIR}.")
 
     # Open the file explorer to the config directory
-    os.startfile(str(CONFIG_DIR))
-    time.sleep(1.5)
+    if opendir:
+        os.startfile(str(CONFIG_DIR))
+        time.sleep(1.5)
 
 
     # Automatically push the configs to GNS3 (not implemented yet)
-    if MessageBox("Push configurations to GNS3", "Do you want to push the configurations to GNS3?").prompt():
+    if push == None:
+        MessageBox("Push configurations to GNS3", "Do you want to push the configurations to GNS3?").prompt()
+    if push:
         print("Pushing configurations to GNS3...")
         selector = ProjectSelector(url="http://localhost:3080", user="admin", cred="admin")
-        project: Project = selector.get_project("NADS")
+        project: Project = selector.get_project()
         
         if project:
             print(f"Selected project: {project.name}")
@@ -453,7 +496,7 @@ if __name__ == "__main__":
                     continue
                 print(f"Connecting to {node_name} ({node_host}:{node_port})...")
 
-                TelnetClient(node_host, node_port, timeout=5).push_configuration(config_file.read_text())
+                TelnetClient(node_host, node_port, timeout=1).push_configuration(config_file.read_text())
                 print(f"Configuration pushed to {node_name}.")
 
 

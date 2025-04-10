@@ -1,93 +1,93 @@
 {
     "provider": {
-        "ip_range": "10.0.0.0/8",
+        "ip_range": "172.16.0.0/24",
         "loopback_range": "192.168.0.0/16",
         "BGP_asn": 65000,
         "routers": {
-            "R1": {
+            "PE1": {
                 "interfaces": {
-                    "f0/0": ["P1"],
-                    "g1/0": ["CAE1"],
-                    "g2/0": ["CBE1"]
+                    "g1/0": ["P1"],
+                    "g2/0": ["CE1A"],
+                    "g3/0": ["CE2A"]
                 }
             },
             "PE2": {
                 "interfaces": {
-                    "GE0/0": ["P2"],
-                    "GE0/1": ["CAE2"],
-                    "GE0/2": ["CBE2"]
+                    "g1/0": ["P2"],
+                    "g2/0": ["CE1B"],
+                    "g3/0": ["CE2B"]
                 }
             },
             "P1": {
                 "interfaces": {
-                    "GE0/0": ["R1"],
-                    "GE0/2": ["P2"]
+                    "g1/0": ["PE1"],
+                    "g2/0": ["P2"]
                 }
             },
             "P2": {
                 "interfaces": {
-                    "GE0/0": ["P1"],
-                    "GE0/1": ["PE2"]
+                    "g1/0": ["PE2"],
+                    "g2/0": ["P1"]
                 }
             }
         }
     },
     "clients": {
         "global": {
-            "ip_range": "172.16.0.0/12"
+            "ip_range": "172.20.1.0/24"
         },
-        "A": {
+        "rouge": {
             "routers": {
-                "CAE1": {
+                "CE1A": {
                     "eBGP_asn": 100,
                     "eBGP_advertized_networks": [
-                        "192.168.0.0/24"
+                        "192.168.1.0/24"
                     ],
                     "interfaces": {
-                        "GE0/0": "R1"
+                        "g1/0": "PE1"
                     },
                     "unmanaged_interfaces": {
-                        "GE0/1": "192.168.0.1/24"
+                        "g2/0": "192.168.1.1/24"
                     }
                 },
-                "CAE2": {
+                "CE1B": {
                     "eBGP_asn": 200,
                     "eBGP_advertized_networks": [
-                        "192.168.10.0/24"
+                        "192.168.2.0/24"
                     ],
                     "interfaces": {
-                        "GE0/0": "PE2"
+                        "g1/0": "PE2"
                     },
                     "unmanaged_interfaces": {
-                        "GE0/1": "192.168.10.1/24"
+                        "g2/0": "192.168.2.1/24"
                     }
                 }
             }
         },
-        "B": {
+        "vert": {
             "routers": {
-                "CBE1": {
+                "CE2A": {
                     "eBGP_asn": 300,
                     "eBGP_advertized_networks": [
                         "192.168.1.0/24"
                     ],
                     "interfaces": {
-                        "GE0/0": "R1"
+                        "g1/0": "PE1"
                     },
                     "unmanaged_interfaces": {
-                        "GE0/1": "192.168.1.1/24"
+                        "g2/0": "192.168.1.1/24"
                     }
                 },
-                "CBE2": {
+                "CE2B": {
                     "eBGP_asn": 400,
                     "eBGP_advertized_networks": [
-                        "192.168.11.0/24"
+                        "192.168.2.0/24"
                     ],
                     "interfaces": {
-                        "GE0/0": "PE2"
+                        "g1/0": "PE2"
                     },
                     "unmanaged_interfaces": {
-                        "GE0/1": "192.168.11.1/24"
+                        "g2/0": "192.168.2.1/24"
                     }
                 }
             }
