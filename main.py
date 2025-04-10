@@ -17,7 +17,9 @@ os.chdir(PATH)
 from utils.fileDialog import FileDialog
 from utils.subnetAllocator import SubnetAllocator
 from utils.ui import ProjectSelector, MessageBox
-from utils.telnetClient import TelnetClient
+from utils.telnetClient import SessionManager
+from utils.argParser import parse_args
+
 
 def generate_configs(intention: dict):
     env = Environment(loader=FileSystemLoader(str(TEMPLATES_DIR)))
@@ -211,7 +213,7 @@ def generate_configs(intention: dict):
                 interface_details["ip_address"] = subnets[subnet_id]["hosts"][device]
                 interface_details["subnet_mask"] = subnets[subnet_id]["subnet"].netmask
             else:
-                print(f"Interface {interface} of device {device} is not a dict. It is a {type(interface_details)}. Please check the intention file.")
+                print(f"Error on interface {interface} of device {device}. Please check the intention file.")
 
     for client, details in clients.items():
         if client == "global":
@@ -228,7 +230,6 @@ def generate_configs(intention: dict):
     # Also create a dict for eBGP neighbors
     for device, device_details in provider_devices.items():
         for interface, details in device_details["interfaces"].items():
-            print(" DETAILS ", details)
             details["client"] = None
             for neighbor in details["neighbors"]:
                 if neighbor in provider_devices:
@@ -249,8 +250,6 @@ def generate_configs(intention: dict):
                                             break
                                 # Set the eBGP neighbor for the provider device
                                 if eBGP_client_interface:
-                                    print(details)
-                                    print(details["ip_address"])
                                     if "eBGP_neighbors" not in device_details:
                                         device_details["eBGP_neighbors"] = {}
                                     device_details["eBGP_neighbors"][str(eBGP_client_interface["ip_address"])] = {
@@ -391,43 +390,17 @@ def generate_configs(intention: dict):
 # Example usage
 if __name__ == "__main__":
 
-    args = sys.argv[1:]
+    # Parse the arguments
+    args = parse_args()
 
-    if "help" in args:
-        print("Usage: python main.py [options] [intention_file.json]")
-        print("Options:")
-        print("  --opendir : Open the config directory after generating the configs.")
-        print("  --push    : Push the configs to GNS3 after generating them.")
-        print("  --nopush  : Do not push the configs to GNS3 after generating them.")
-        exit()
-
-    selected_file = None
-    push = None
-    opendir = False
-
-    if args:
-        if "opendir" in args:
-            opendir = True
-            args.remove("opendir")
-        if "push" in args:
-            push = True
-            args.remove("push")
-        if "nopush" in args:
-            push = False
-            args.remove("nopush")
-    for arg in args:
-        if arg.endswith(".json"):
-            selected_file = arg
-            break
-
-    if not selected_file:
+    if not args.file:
         # Get the intention file
         file_dialog = FileDialog()
         selected_file = file_dialog.select_json_file()
-
-    if selected_file:
-        print(f"Selected file: {selected_file}")
     else:
+        selected_file = args.file
+
+    if not selected_file:
         print("No file selected. Exiting.")
         exit()
 
@@ -437,68 +410,75 @@ if __name__ == "__main__":
     try:
         config_files: dict[str, Path] = generate_configs(data)
     except KeyError as e:
-        print(f"KeyError: {e}. Please check the intention file.")
+        print(f"An Error occured: KeyError: {e}. Please check the intention file.")
         print("A relation in the intention file might be missing or corrupted.")
         exit()
 
     print(f"Configurations saved to {CONFIG_DIR}.")
 
     # Open the file explorer to the config directory
-    if opendir:
+    if args.opendir:
         os.startfile(str(CONFIG_DIR))
         time.sleep(1.5)
 
 
     # Automatically push the configs to GNS3 (not implemented yet)
-    if push == None:
-        MessageBox("Push configurations to GNS3", "Do you want to push the configurations to GNS3?").prompt()
-    if push:
-        print("Pushing configurations to GNS3...")
+    if args.push is None:
+        push = MessageBox("Push configurations to GNS3", "Do you want to push the configurations to GNS3?").prompt()
+    if args.push:
+        print("Pushing configurations to GNS3.")
+
         selector = ProjectSelector(url="http://localhost:3080", user="admin", cred="admin")
-        project: Project = selector.get_project()
+
+        if args.push is True:
+            project: Project = selector.get_project()
+        else:
+            project: Project = selector.get_project(args.push)
         
         if project:
-            print(f"Selected project: {project.name}")
-
             # Make sure the project is running
-            print(project.status)
             if not project.status == "running":
-                print("Starting project...")
                 project.open()
-                print("Project started.")
+                print(f"Opened project \"{project.name}\".")
 
             # Make sure all nodes are up
-            print(project.start_nodes())
-
-            print("Powered on all nodes.")
+            project.start_nodes()
 
             # Get all the nodes in the project
             nodes = project.nodes
-            print(f"Found {len(nodes)} nodes in the project.")
-
-            open("nodes.json", "w").write(json.dumps(nodes, default=str, indent=4))   
+            #open("nodes.json", "w").write(json.dumps(nodes, default=str, indent=4))   
             
+            # Push the configurations using the SessionManager
+            session_manager = SessionManager()
+            print(f"Pushing configurations to {len(nodes)} nodes.\n")
             for node in nodes:
-                # Get the node name
                 node_name = node.name
                 node_host = node.console_host
                 node_port = node.console
-                
+
                 config_file = config_files.get(node_name)
-                if not config_file:
-                    print(f"No configuration file found for {node_name}.")
-                    continue
-                if not config_file.exists():
-                    print(f"Configuration file {config_file} does not exist.")
+                if not config_file or not config_file.exists():
+                    print(f"Missing config for {node_name}")
                     continue
                 if not node_host or not node_port:
-                    print(f"No console host or port found for {node_name}.")
+                    print(f"Missing host/port for {node_name}")
                     continue
-                print(f"Connecting to {node_name} ({node_host}:{node_port})...")
 
-                TelnetClient(node_host, node_port, timeout=1).push_configuration(config_file.read_text())
-                print(f"Configuration pushed to {node_name}.")
+                session_manager.push_configuration(node_name, node_host, node_port, config_file.read_text())
 
+            while not session_manager.all_done():
+                try:
+                    session_manager.status(flush=True)
+                    time.sleep(0.1)
+                except KeyboardInterrupt:
+                    session_manager.terminate_all()
+                    print("Terminating all sessions...")
+                    sys.exit(0)
+            else:
+                session_manager.status(flush=True)
+
+
+            print("All configurations pushed.")
 
             
         else:
