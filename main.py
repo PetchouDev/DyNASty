@@ -1,10 +1,11 @@
 import os
 import json
+import time
 from pathlib import Path
 from ipaddress import IPv4Network
 
+from gns3fy import Project
 from jinja2 import Environment, FileSystemLoader
-from gns3fy import Gns3Connector
 
 PATH = Path(__file__).parent.resolve()
 CONFIG_DIR = PATH / "data" / "configs"
@@ -13,8 +14,9 @@ TEMPLATES_DIR = PATH / "templates"
 os.chdir(PATH)
 
 from utils.fileDialog import FileDialog
-from utils.projectSelector import ProjectSelector
 from utils.subnetAllocator import SubnetAllocator
+from utils.ui import ProjectSelector, MessageBox
+from utils.telnetClient import TelnetClient
 
 def generate_configs(intention: dict):
     env = Environment(loader=FileSystemLoader(str(TEMPLATES_DIR)))
@@ -340,6 +342,7 @@ def generate_configs(intention: dict):
     #     json.dump(intention, f, indent=4, default=str)
 
     # Generate the configurations for each device
+    generated_config_files = {}
     for device, details in provider_devices.items():
         if details["role"] == "backbone":
             template_file = "provider_bb.j2"
@@ -351,8 +354,11 @@ def generate_configs(intention: dict):
         config = env.get_template(template_file).render(details_dict)
 
         # Write the configuration to a file
-        with open(CONFIG_DIR / f"{device}.cfg", "w") as f:
+        file_path = CONFIG_DIR / f"{device}.cfg"
+        with open(file_path, "w") as f:
             f.write(config)
+
+        generated_config_files[device] = file_path
 
     for client, details in clients.items():
         if client == "global":
@@ -364,8 +370,13 @@ def generate_configs(intention: dict):
             config = env.get_template(template_file).render(details_dict)
 
             # Write the configuration to a file
-            with open(CONFIG_DIR / f"{router}.cfg", "w") as f:
+            file_path = CONFIG_DIR / f"{router}.cfg"
+            with open(file_path, "w") as f:
                 f.write(config)
+
+            generated_config_files[router] = file_path
+
+    return generated_config_files
 
 # Example usage
 if __name__ == "__main__":
@@ -383,21 +394,72 @@ if __name__ == "__main__":
     with open(selected_file, "r") as f:
         data = json.load(f)
     
-    generate_configs(data)
+    try:
+        config_files: dict[str, Path] = generate_configs(data)
+    except KeyError as e:
+        print(f"KeyError: {e}. Please check the intention file.")
+        print("A relation in the intention file might be missing or corrupted.")
+        exit()
 
     print(f"Configurations saved to {CONFIG_DIR}.")
 
     # Open the file explorer to the config directory
     os.startfile(str(CONFIG_DIR))
+    time.sleep(1.5)
+
 
     # Automatically push the configs to GNS3 (not implemented yet)
-    exit()
-    server = Gns3Connector("http://localhost:3080", user="admin", cred="admin")
-    selector = ProjectSelector(server)
-    project = selector.get_project("NADS")
+    if MessageBox("Push configurations to GNS3", "Do you want to push the configurations to GNS3?").prompt():
+        print("Pushing configurations to GNS3...")
+        selector = ProjectSelector(url="http://localhost:3080", user="admin", cred="admin")
+        project: Project = selector.get_project("NADS")
+        
+        if project:
+            print(f"Selected project: {project.name}")
+
+            # Make sure the project is running
+            print(project.status)
+            if not project.status == "running":
+                print("Starting project...")
+                project.open()
+                print("Project started.")
+
+            # Make sure all nodes are up
+            print(project.start_nodes())
+
+            print("Powered on all nodes.")
+
+            # Get all the nodes in the project
+            nodes = project.nodes
+            print(f"Found {len(nodes)} nodes in the project.")
+
+            open("nodes.json", "w").write(json.dumps(nodes, default=str, indent=4))   
+            
+            for node in nodes:
+                # Get the node name
+                node_name = node.name
+                node_host = node.console_host
+                node_port = node.console
+                
+                config_file = config_files.get(node_name)
+                if not config_file:
+                    print(f"No configuration file found for {node_name}.")
+                    continue
+                if not config_file.exists():
+                    print(f"Configuration file {config_file} does not exist.")
+                    continue
+                if not node_host or not node_port:
+                    print(f"No console host or port found for {node_name}.")
+                    continue
+                print(f"Connecting to {node_name} ({node_host}:{node_port})...")
+
+                TelnetClient(node_host, node_port, timeout=5).push_configuration(config_file.read_text())
+                print(f"Configuration pushed to {node_name}.")
+
+
+            
+        else:
+            print("No project selected. Exiting.")
     
-    if project:
-        print(f"Selected project: {project.name}")
-        print(project.nodes)
-    else:
-        print("No project selected. Exiting.")
+    exit()
+
