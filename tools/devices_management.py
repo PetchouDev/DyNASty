@@ -1,34 +1,49 @@
-from typing import Dict, Any, Tuple
+from typing import Dict, Any, List, Tuple, Union
 
+from tools.network_managment import CIDR_to_network
 
 def merge_and_tag_devices(
     provider_devices: Dict[str, Any],
-    provider_asn: str,
-    clients: Dict[str, Any]
+    clients: Dict[str, Any],
+    provider_asn: int,
+    route_reflector_list: Union[List[str], str, None]
 ) -> Tuple[Dict[str, Any], Dict[str, Any]]:
     """
-    Tag et sépare provider vs client routers.
+    Sépare et tague les devices :
+        - role: 'backbone' | 'edge' | 'client'
+        - is_route_reflector: True si dans la liste
+        - hostname, BGP_asn
     """
-    # Tag provider
+    # 1. On normalise la liste des RRs
+    if isinstance(route_reflector_list, str):
+        rr_list = [route_reflector_list]
+    elif isinstance(route_reflector_list, list):
+        rr_list = route_reflector_list
+    else:
+        rr_list = []
+
+    # 2. Tag des provider
     for name, details in provider_devices.items():
+        # rôle edge/backbone
         is_edge = any(
-            (nbr not in provider_devices)
+            nbr not in provider_devices
             for iface in details.get('interfaces', {}).values()
             for nbr in (iface if isinstance(iface, list) else [iface])
         )
-        details['role'] = 'edge' if is_edge else 'backbone'
-        details['hostname'] = name
-        details['BGP_asn'] = provider_asn
+        details['role']                = 'edge' if is_edge else 'backbone'
+        details['hostname']            = name
+        details['BGP_asn']             = provider_asn
+        details['is_route_reflector'] = name in rr_list
 
-    # Collect client routers
+    # 3. Extraction et tag des clients
     client_routers: Dict[str, Any] = {}
     for client_name, c_data in clients.items():
         if client_name == 'global':
             continue
         for router, r_details in c_data.get('routers', {}).items():
-            r_details['role'] = 'client'
-            r_details['client'] = client_name
+            r_details['role']     = 'client'
             r_details['hostname'] = router
+            r_details['client']   = client_name
             client_routers[router] = r_details
 
     return provider_devices, client_routers
@@ -61,6 +76,17 @@ def normalize_interfaces(devices: Dict[str, Any]) -> None:
                     'subnet_mask': None
                 }
         dev['interfaces'] = new_if
+
+        if dev["role"] == "client":
+            for iface_name, network in dev.get('unmanaged_interfaces', {}).items():
+                network = CIDR_to_network(network)
+                dev['interfaces'][iface_name] = {
+                    'neighbors': [],
+                    'subnet_id': -1,
+                    'ip_address': network['address'],
+                    'subnet_mask': network['mask']
+                }
+
 
 def tag_interface_types(
     provider_devices: Dict[str, Any],

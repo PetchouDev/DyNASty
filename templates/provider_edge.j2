@@ -6,55 +6,58 @@ conf t
 
 hostname {{ hostname }}
 
-! Configuration interfaces provider{% for name, interface in interfaces.items() %}{% if not interface.type == 'client' %}
+! Configuration interfaces provider{% for name, interface in interfaces.items() %}{% if interface.type != 'client' %}
 interface {{ name }}
  ip address {{ interface.ip_address }} {{ interface.subnet_mask }}
  no shutdown
  exit
 {% endif %}{% endfor %}
 ! Configuration OSPF
-router ospf 1
-{% for subnet in ospf_subnets %} network {{ subnet.address }} {{ subnet.wildcard_mask }} area 0
+router ospf 1{% for subnet in ospf_subnets %}
+ network {{ subnet.address }} {{ subnet.wildcard_mask }} area 0
 {% endfor %} exit
 
 ! Configuration LDP
-mpls ip
-{% for interface in mpls_interfaces %}interface {{ interface }}
+mpls ip{% for interface in mpls_interfaces %}
+interface {{ interface }}
  mpls ip
  exit
 {% endfor %}
 mpls ldp router-id Loopback0 force
 
 ! Configuration iBGP
-router bgp {{ BGP_asn }}{% for neighbor in iBGP_neighbors %}
- neighbor {{ neighbor }} remote-as {{ BGP_asn }}
- neighbor {{ neighbor }} update-source Loopback0{% endfor %}
- address-family vpnv4{% for neighbor in iBGP_neighbors %}
+router bgp {{ BGP_asn }}{% if is_route_reflector %}
+ bgp log-neighbor-changes{% endif %}{% for neighbor, params in iBGP_neighbors.items() %}
+ neighbor {{ neighbor }} remote-as {{ params.remote_as }}
+ neighbor {{ neighbor }} update-source {{ params.update_source }}{% if params.route_reflector_client %}
+  neighbor {{ neighbor }} route-reflector-client{% endif %}{% endfor %}
+ address-family vpnv4{% for neighbor, params in iBGP_neighbors.items() %}
   neighbor {{ neighbor }} activate
-  neighbor {{ neighbor }} send-community extended{% endfor %}
+  neighbor {{ neighbor }} send-community extended{% if is_route_reflector %}
+  neighbor {{ neighbor }} route-reflector-client{% endif %}{% endfor %}
  exit-address-family
  exit
 
 ! Configuration VRFs{% for client, vrf in VRF.items() %}
 vrf definition {{ vrf.name }}
- rd {{ BGP_asn }}:{{ vrf.rd}}
+ rd {{ BGP_asn }}:{{ vrf.rd }}
  route-target export {{ BGP_asn }}:{{ vrf.rd }}
  route-target import {{ BGP_asn }}:{{ vrf.rd }}
  address-family ipv4
  exit-address-family
  exit
 {% endfor %}
+
 ! Configuration interfaces clients{% for name, interface in interfaces.items() %}{% if interface.type == 'client' %}
 interface {{ name }}
  vrf forwarding CLIENT_{{ interface.client }}_VRF
  ip address {{ interface.ip_address }} {{ interface.subnet_mask }}
  no shutdown
- exit
-{% endif %}{% endfor %}
-! Configuration eBgp avec les clients
-router bgp {{ BGP_asn }}{% for peer, remote_system in eBGP_neighbors.items() %}
- address-family ipv4 vrf {{ remote_system.VRF }}
-  neighbor {{ peer }} remote-as {{ remote_system.BGP_asn }}
+ exit{% endif %}{% endfor %}
+! Configuration eBGP avec les clients
+router bgp {{ BGP_asn }}{% for peer, remote in eBGP_neighbors.items() %}
+ address-family ipv4 vrf {{ remote.VRF }}
+  neighbor {{ peer }} remote-as {{ remote.BGP_asn }}
   neighbor {{ peer }} activate
  exit-address-family
 {% endfor %} exit

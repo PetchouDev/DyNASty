@@ -4,19 +4,10 @@ from typing import Dict, Any, Tuple, List
 
 def collect_routing_info(
     provider_devices: Dict[str, Any],
-    provider_asn: str,
+    provider_asn: int,
     client_routers: Dict[str, Any],
     subnets_info: List[Tuple[str, str, str, IPv4Network, int]]
 ) -> None:
-    """
-    Construit et ajoute pour chaque device :
-        - ospf_subnets : liste des {address, wildcard_mask}
-        - mpls_interfaces : liste des noms d'interface
-        - iBGP_neighbors : liste d'IP de loopbacks autres PE
-        - eBGP_neighbors : dict peer_ip -> {asn, VRF}
-        - bgp_advertise (pour clients) : liste des réseaux à annoncer
-    Modifie provisoirement provider_devices & client_routers.
-    """
     # OSPF/MPLS pour provider
     for name, dev in provider_devices.items():
         ospf_list: List[Dict[str, str]] = []
@@ -39,45 +30,94 @@ def collect_routing_info(
             if peer_dev['role'] == 'edge' and peer_dev['hostname'] != name
         ]
 
-    # eBGP pour provider & collection des réseaux clients
-    for c in client_routers.values():
-        # Construction des réseaux à annoncer
-        for net in c.get('eBGP_advertized_networks', []):
-            nw = IPv4Network(net)
-            c.setdefault('bgp_advertise', []).append({'address': str(nw.network_address), 'mask': str(nw.netmask)})
+    #  iBGP et Route-Reflector
+    pe_loops = {
+        name: dev['interfaces']['loopback0']['ip_address']
+        for name, dev in provider_devices.items()
+        if dev['role'] == 'edge'
+    }
+    rr_list = [
+        name for name, dev in provider_devices.items()
+        if dev.get('is_route_reflector')
+    ]
+
     for name, dev in provider_devices.items():
-        dev["VRF"] = {}
-        ebgp: Dict[str, Any] = {}
-        route_distinguisher = 1
+        if not (dev['role'] == 'edge' or dev.get('is_route_reflector')):
+            continue
+
+        if dev.get('is_route_reflector'):
+            peer_ips = [ip for peer, ip in pe_loops.items() if peer != name]
+        else:
+            if rr_list:
+                peer_ips = [
+                    provider_devices[rr]['interfaces']['loopback0']['ip_address']
+                    for rr in rr_list if rr != name
+                ]
+            else:
+                peer_ips = [ip for peer, ip in pe_loops.items() if peer != name]
+
+        ibgp = {}
+        for peer_ip in peer_ips:
+            ibgp[peer_ip] = {
+                'remote_as':              provider_asn,
+                'update_source':          'Loopback0',
+            }
+        dev['iBGP_neighbors'] = ibgp
+
+    #  eBGP vers les clients
+    for dev in provider_devices.values():
+        if dev['role'] != 'edge':
+            continue
+
+        ebgp = {}
+        rd = 1
+        dev['VRF'] = {}
         for if_conf in dev['interfaces'].values():
             if if_conf['type'] == 'client':
-                peer = if_conf['neighbors'][0]
-                peer_dev = client_routers[peer]
-                VRF_name = f"CLIENT_{peer_dev['client']}_VRF"
-                ebgp[if_conf['ip_address']] = {
-                    'BGP_asn': peer_dev['BGP_asn'],
-                    'VRF': VRF_name,
-                }
-                # Assigner un route distinguisher unique pour chaque client
-                dev["VRF"][peer_dev['client']] = {
-                    'name': VRF_name,
-                    'rd': route_distinguisher
-                }
-                # Incrémenter le route distinguisher pour le prochain client
-                route_distinguisher += 1
+                # Trouver le client associé à l'interface
+                peer_name  = if_conf['neighbors'][0]
+                client_dev = client_routers[peer_name]
 
+                #Récupération de l'IP de l'interface du client
+                client_if = next(
+                    ifc for ifc in client_dev['interfaces'].values()
+                    if ifc['subnet_id'] == if_conf['subnet_id']
+                )
+                if not client_if:
+                    raise ValueError(f"Client {peer_name} does not have an interface with subnet_id {if_conf['subnet_id']}")
+                if not client_if['ip_address']:
+                    raise ValueError(f"Client {peer_name} does not have an IP address assigned to subnet_id {if_conf['subnet_id']}")
+                
+                vrf_name = f"CLIENT_{client_dev['client']}_VRF"
+                ebgp[client_if['ip_address']] = {
+                    'BGP_asn': client_dev['BGP_asn'],
+                    'VRF': vrf_name,
+                }
+                dev['VRF'][client_dev["BGP_asn"]] = {
+                    'name': vrf_name,
+                    'rd': rd,
+                }
+                rd += 1
         dev['eBGP_neighbors'] = ebgp
-    
-    # Pairs eBGP pour les clients
+
+    # BGP des clients
     for name, c in client_routers.items():
+        advert_nets = []
+        for net in c.get('BGP_advertized_networks', []):
+            nw = IPv4Network(net)
+            advert_nets.append({
+                'address': str(nw.network_address),
+                'mask':    str(nw.netmask)
+            })
+        c['bgp_advertise'] = advert_nets
+
         peer_ip = next(
-            d['interfaces'][iface]['ip_address']
-            for d in provider_devices.values()
-            for iface, ifc in d['interfaces'].items()
-            if name in ifc['neighbors']
+            ifc['ip_address']
+            for p in provider_devices.values()
+            for ifc in p['interfaces'].values()
+            if name in ifc.get('neighbors', [])
         )
         c['eBGP_peer'] = {
-            'ip_address': peer_ip, 
-            'BGP_asn': provider_asn,
+            'ip_address': peer_ip,
+            'BGP_asn':        provider_asn
         }
-        # Réseaux diffusés par le client via eBGP déjà renseignés dans le fichier d'intention

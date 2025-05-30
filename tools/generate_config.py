@@ -13,15 +13,16 @@ from tools.network_managment import add_loopback_interfaces, allocate_link_subne
 from tools.routing_management import collect_routing_info
 
 
-def generate_configs(intention: Dict[str, Any]) -> Path:
+def generate_configs(intention: Dict[str, Dict[str, Any]]) -> Path:
     provider_int = intention['provider']
     clients_int = intention['clients']
 
     # 1. Tag les types de routeurs (backbone, edge, client)
     prov_devs, cli_devs = merge_and_tag_devices(
-        provider_int['routers'], 
+        provider_int['routers'],
+        clients_int,
         provider_int['BGP_asn'],
-        clients_int
+        provider_int.get('route_reflectors')
     )
 
     # 2. Normalisation des interfaces
@@ -79,7 +80,7 @@ def generate_configs(intention: Dict[str, Any]) -> Path:
     # Creation du répertoire de configuration s'il n'existe pas
     CONFIG_DIR.mkdir(parents=True, exist_ok=True)
 
-    pprint(cli_devs["CE1A"])
+    pprint(prov_devs["PE1"])
 
     # Rendu et écriture des configurations en parallèle
     with ThreadPoolExecutor(max_workers=4) as executor:

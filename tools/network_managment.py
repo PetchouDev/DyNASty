@@ -14,7 +14,7 @@ def CIDR_to_network(cidr: str) -> str:
         mask_str = '.'.join(str(int(mask[i:i + 8], 2)) for i in range(0, 32, 8))
         return {
             "address": address,
-            "subnet_mask": mask_str,
+            "mask": mask_str,
             "cidr": cidr
         }
     except ValueError as e:

@@ -49,11 +49,11 @@ class TelnetClient:
             self.connect()
         if self.connection:
             try:
-                self.send_command("")
-                self.send_command("")
+                self.send_command("\n\n")
                 for command in config_commands.splitlines():
                     self.send_command(command.strip())
-                    self.send_command("")
+                    time.sleep(0.1)
+                    #self.send_command("")
             except Exception as e:
                 #print(f"Failed to push configuration - {e}")
                 pass

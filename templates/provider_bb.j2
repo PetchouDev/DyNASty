@@ -24,6 +24,17 @@ mpls ip
  exit
 {% endfor %}
 mpls ldp router-id Loopback0 force
+{% if is_route_reflector %}
+! Configuration route reflector
+router bgp {{ BGP_asn }}
+ bgp log-neighbor-changes{% for neighbor, params in iBGP_neighbors.items() %}
+ neighbor {{ neighbor }} remote-as {{ params.remote_as }}
+ neighbor {{ neighbor }} update-source {{ params.update_source }}{% endfor %}
+ address-family vpnv4{% for neighbor, params in iBGP_neighbors.items() %}
+  neighbor {{ neighbor }} activate
+  neighbor {{ neighbor }} send-community extended
+  neighbor {{ neighbor }} route-reflector-client{% endfor %}
+ exit-address-family{% endif %}
 
 end
 write memory
