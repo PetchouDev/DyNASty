@@ -6,7 +6,7 @@ conf t
 
 hostname {{ hostname }}
 
-! Configuration interfaces provider{% for name, interface in interfaces.items() %}{% if not interface.client %}
+! Configuration interfaces provider{% for name, interface in interfaces.items() %}{% if not interface.type == 'client' %}
 interface {{ name }}
  ip address {{ interface.ip_address }} {{ interface.subnet_mask }}
  no shutdown
@@ -44,9 +44,9 @@ vrf definition {{ vrf.name }}
  exit-address-family
  exit
 {% endfor %}
-! Configuration interfaces clients{% for name, interface in interfaces.items() %}{% if interface.client %}
+! Configuration interfaces clients{% for name, interface in interfaces.items() %}{% if interface.type == 'client' %}
 interface {{ name }}
-vrf forwarding CLIENT_{{ interface.client }}_VRF
+ vrf forwarding CLIENT_{{ interface.client }}_VRF
  ip address {{ interface.ip_address }} {{ interface.subnet_mask }}
  no shutdown
  exit
@@ -54,7 +54,7 @@ vrf forwarding CLIENT_{{ interface.client }}_VRF
 ! Configuration eBgp avec les clients
 router bgp {{ BGP_asn }}{% for peer, remote_system in eBGP_neighbors.items() %}
  address-family ipv4 vrf {{ remote_system.VRF }}
-  neighbor {{ peer }} remote-as {{ remote_system.asn }}
+  neighbor {{ peer }} remote-as {{ remote_system.BGP_asn }}
   neighbor {{ peer }} activate
  exit-address-family
 {% endfor %} exit

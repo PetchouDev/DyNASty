@@ -109,9 +109,8 @@ class SessionManager:
             else:
                 lines.append(f"{short_name:<8} \033[94m{loading_state} pushing...\033[0m")
 
-        for line in lines:
-            print(line)
-        print(f"\n{done}/{len(self.sessions)} nodes completed.")
+        lines = "\n".join(lines)
+        print(f"{lines}\n{done}/{len(self.sessions)} nodes completed.")
         self.has_printed = len(lines) + 2
 
     def wait_all(self):

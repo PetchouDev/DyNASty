@@ -3,6 +3,7 @@
         "ip_range": "172.16.0.0/24",
         "loopback_range": "192.168.0.0/16",
         "BGP_asn": 65000,
+        "route_reflector": "P1",
         "routers": {
             "PE1": {
                 "interfaces": {
@@ -39,8 +40,8 @@
         "rouge": {
             "routers": {
                 "CE1A": {
-                    "eBGP_asn": 100,
-                    "eBGP_advertized_networks": [
+                    "BGP_asn": 100,
+                    "BGP_advertized_networks": [
                         "192.168.1.0/24"
                     ],
                     "interfaces": {
@@ -51,8 +52,8 @@
                     }
                 },
                 "CE1B": {
-                    "eBGP_asn": 200,
-                    "eBGP_advertized_networks": [
+                    "BGP_asn": 200,
+                    "BGP_advertized_networks": [
                         "192.168.2.0/24"
                     ],
                     "interfaces": {
@@ -67,8 +68,8 @@
         "vert": {
             "routers": {
                 "CE2A": {
-                    "eBGP_asn": 300,
-                    "eBGP_advertized_networks": [
+                    "BGP_asn": 300,
+                    "BGP_advertized_networks": [
                         "192.168.1.0/24"
                     ],
                     "interfaces": {
@@ -79,8 +80,8 @@
                     }
                 },
                 "CE2B": {
-                    "eBGP_asn": 400,
-                    "eBGP_advertized_networks": [
+                    "BGP_asn": 400,
+                    "BGP_advertized_networks": [
                         "192.168.2.0/24"
                     ],
                     "interfaces": {

@@ -13,8 +13,8 @@ interface {{ name }}
  exit
 {% endfor %}
 ! Configuration eBGP
-router bgp {{ eBGP_asn }}
- neighbor {{ eBGP_peer.ip_address }} remote-as {{ eBGP_peer.asn }}{% for network in eBGP_advertized_networks %}
+router bgp {{ BGP_asn }}
+ neighbor {{ eBGP_peer.ip_address }} remote-as {{ eBGP_peer.BGP_asn }}{% for network in BGP_advertized_networks %}
  network {{ network.address }} mask {{ network.mask }}{% endfor %}
  exit
 
