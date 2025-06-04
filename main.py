@@ -1,17 +1,12 @@
 from __future__ import annotations
-from typing import List, Dict, Tuple, Union, Any
 
 import os
 import json
 import sys
 import time
 from pathlib import Path
-from traceback import format_exc
-from concurrent.futures import ThreadPoolExecutor, as_completed
 
-from ipaddress import IPv4Network
 from gns3fy import Project
-from jinja2 import Environment, FileSystemLoader
 
 from tools.generate_config import generate_configs
 
@@ -40,6 +35,7 @@ if __name__ == "__main__":
 ||         |___/ Lise, Ethan PJ & Mathéo |___/    ||
 \==================================================/
 """)
+    print()
     # Parser les arguments en ligne de commande
     args = parse_args()
 
@@ -115,7 +111,8 @@ if __name__ == "__main__":
             
             # Push the configurations using the SessionManager
             session_manager = SessionManager()
-            print(f"Pushing configurations to {len(nodes)} nodes.\n\n\n")
+            print(f"Pushing configurations to {len(nodes)} nodes.")
+            #print("\n" * 10)
             for node in nodes:
                 node_name = node.name
                 node_host = node.console_host
