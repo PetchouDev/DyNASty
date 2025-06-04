@@ -21,7 +21,6 @@ PATH = Path(__file__).parent.resolve()
 os.chdir(PATH)
 
 from lib.fileDialog import FileDialog
-from lib.subnetAllocator import SubnetAllocator
 from lib.ui import ProjectSelector, MessageBox
 from lib.telnetClient import SessionManager
 from lib.argParser import parse_args
@@ -31,6 +30,16 @@ from tools.files_management import CONFIG_DIR, CURRENT_DIR
 
 if __name__ == "__main__":
 
+    print("""
+/==================================================\\
+||   ____        _   _    _    ____  _            ||
+||  |  _ \ _   _| \ | |  / \  / ___|| |_ _   _    ||
+||  | | | | | | |  \| | / _ \ \___ \| __| | | |   ||
+||  | |_| | |_| | |\  |/ ___ \ ___) | |_| |_| |   ||
+||  |____/ \__, |_| \_/_/   \_\____/ \__|\__, |   ||
+||         |___/ Lise, Ethan PJ & Mathéo |___/    ||
+\==================================================/
+""")
     # Parser les arguments en ligne de commande
     args = parse_args()
 
